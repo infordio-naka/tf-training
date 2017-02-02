@@ -1,3 +1,7 @@
+"""
+ref: http://qiita.com/sergeant-wizard/items/98ce0993a195475fd7a9
+"""
+
 import tensorflow as tf
 
 input = [
