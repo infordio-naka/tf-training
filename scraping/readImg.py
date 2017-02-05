@@ -7,10 +7,10 @@ import sys
 import glob
 import tensorflow as tf
 import numpy      as np
-import cv2
 
 NUM_CLASSES = 2
-IMAGE_SIZE  = 24
+IMAGE_SIZE  = 28
+NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN = 50000
 
 """
 input_file : csv
@@ -21,19 +21,43 @@ ex.
 /home/user/img200.jpeg,5
 """
 
-def getdirs(path):
-    dirs = []
-    for item in os.listdir(path):
-        imgpath = os.path.join(path, item)
-        if (os.path.isdir(imgpath)):
-            dirs.append(imgpath)
-    return (dirs)
+def _generate_image_and_label_batch(image, label, min_queue_examples,
+                                    batch_size, shuffle):
+  """Construct a queued batch of images and labels.
+  Args:
+    image: 3-D Tensor of [height, width, 3] of type.float32.
+    label: 1-D Tensor of type.int32
+    min_queue_examples: int32, minimum number of samples to retain
+      in the queue that provides of batches of examples.
+    batch_size: Number of images per batch.
+    shuffle: boolean indicating whether to use a shuffling queue.
+  Returns:
+    images: Images. 4D tensor of [batch_size, height, width, 3] size.
+    labels: Labels. 1D tensor of [batch_size] size.
+  """
+  # Create a queue that shuffles the examples, and then
+  # read 'batch_size' images + labels from the example queue.
+  num_preprocess_threads = 16
+  if shuffle:
+    images, label_batch = tf.train.shuffle_batch(
+        [image, label],
+        batch_size=batch_size,
+        num_threads=num_preprocess_threads,
+        capacity=min_queue_examples + 3 * batch_size,
+        min_after_dequeue=min_queue_examples)
+  else:
+    images, label_batch = tf.train.batch(
+        [image, label],
+        batch_size=batch_size,
+        num_threads=num_preprocess_threads,
+        capacity=min_queue_examples + 3 * batch_size)
 
-def getfile(path):
-    file = os.path.join(path,'image.label')
-    return (file)
+  # Display the training images in the visualizer.
+  tf.image_summary('images', images)
 
-def read_dataset(path):
+  return images, tf.reshape(label_batch, [batch_size])
+
+def read_dataset(path, batch_size):
     """
     ref: http://qiita.com/knok/items/2dd15189cbca5f9890c5
     """
@@ -47,7 +71,7 @@ def read_dataset(path):
     fname, label   = tf.decode_csv(val, [["aa"], [1]])
     jpeg_r         = tf.read_file(fname)
     raw_image      = tf.image.decode_jpeg(jpeg_r, channels=3)
-    resape_image   = tf.image.resize_images(images, [28,28])
+    reshaped_image   = tf.image.resize_images(raw_image, [28,28])
 
     """
     ref: https://github.com/tensorflow/models/blob/master/tutorials/image/cifar10/cifar10_input.py
@@ -60,8 +84,16 @@ def read_dataset(path):
     float_image    = tf.image.per_image_standardization(distored_image)
     
     float_image.set_shape([height, width, 3])
+    float_image = tf.reshape(float_image, [IMAGE_SIZE*IMAGE_SIZE*3])
+
+    label = tf.cast(label, tf.int64)
+    min_fraction_of_examples_in_queue = 0.4
+    min_queue_examples = int(NUM_EXAMPLES_PER_EPOCH_FOR_TRAIN *
+                             min_fraction_of_examples_in_queue)
     
-    return(float_image, label)
+    return (_generate_image_and_label_batch(float_image, label,
+                                         min_queue_examples, batch_size,
+                                         shuffle=True))
 
 if( __name__ == "__main__"):
     path = os.path.join("season.csv")
