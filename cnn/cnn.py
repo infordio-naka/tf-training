@@ -1,0 +1,197 @@
+#coding: utf-8
+
+import os
+import numpy      as np
+import tensorflow as tf
+from   readImg    import read_dataset
+
+# Config
+flags = tf.app.flags
+FLAGS = flags.FLAGS
+flags.DEFINE_string("path", "season.csv", "path   of CSVdataset")
+flags.DEFINE_integer("image_size", 28*28*3, "Size   of image")
+flags.DEFINE_integer("class_size", 2,     "Size   of class")
+flags.DEFINE_integer("epoch",      1000,  "Number of epoch")
+flags.DEFINE_integer("batch_size", 100,   "Number of batch")
+
+
+#batch_x, batch_y = next_batch(train_x, train_y)
+#print(batch_x)
+#print(batch_y)
+#exit()
+
+def inference(input_placeholder, keep_prob):
+    """
+    ref: http://kivantium.hateblo.jp/entry/2015/11/18/233834
+
+    予測モデルを作成する関数
+
+    引数: 
+      images_placeholder: 画像のplaceholder
+      keep_prob: dropout率のplaceholder
+
+    返り値:
+      y_conv: 各クラスの確率(のようなもの)
+    """
+    # 重みを標準偏差0.1の正規分布で初期化
+    def weight_variable(shape):
+      initial = tf.truncated_normal(shape, stddev=0.1)
+      return tf.Variable(initial)
+
+    # バイアスを標準偏差0.1の正規分布で初期化
+    def bias_variable(shape):
+      initial = tf.constant(0.1, shape=shape)
+      return tf.Variable(initial)
+
+    # 畳み込み層の作成
+    def conv2d(x, W):
+      return tf.nn.conv2d(x, W, strides=[1, 1, 1, 1], padding='SAME')
+
+    # プーリング層の作成
+    def max_pool_2x2(x):
+      return tf.nn.max_pool(x, ksize=[1, 2, 2, 1],
+                            strides=[1, 2, 2, 1], padding='SAME')
+    
+    # 入力を28x28x3に変形
+    x_image = tf.reshape(input_placeholder, [-1, 28, 28, 3])
+
+    # 畳み込み層1の作成
+    with tf.name_scope('conv1') as scope:
+        W_conv1 = weight_variable([5, 5, 3, 32])
+        b_conv1 = bias_variable([32])
+        h_conv1 = tf.nn.relu(conv2d(x_image, W_conv1) + b_conv1)
+
+    # プーリング層1の作成
+    with tf.name_scope('pool1') as scope:
+        h_pool1 = max_pool_2x2(h_conv1)
+    
+    # 畳み込み層2の作成
+    with tf.name_scope('conv2') as scope:
+        W_conv2 = weight_variable([5, 5, 32, 64])
+        b_conv2 = bias_variable([64])
+        h_conv2 = tf.nn.relu(conv2d(h_pool1, W_conv2) + b_conv2)
+
+    # プーリング層2の作成
+    with tf.name_scope('pool2') as scope:
+        h_pool2 = max_pool_2x2(h_conv2)
+
+    # 全結合層1の作成
+    with tf.name_scope('fc1') as scope:
+        W_fc1 = weight_variable([7*7*64, 1024])
+        b_fc1 = bias_variable([1024])
+        h_pool2_flat = tf.reshape(h_pool2, [-1, 7*7*64])
+        h_fc1 = tf.nn.relu(tf.matmul(h_pool2_flat, W_fc1) + b_fc1)
+        # dropoutの設定
+        h_fc1_drop = tf.nn.dropout(h_fc1, keep_prob)
+
+    # 全結合層2の作成
+    with tf.name_scope('fc2') as scope:
+        W_fc2 = weight_variable([1024, FLAGS.class_size])
+        b_fc2 = bias_variable([FLAGS.class_size])
+
+    # ソフトマックス関数による正規化
+    with tf.name_scope('softmax') as scope:
+        y_conv=tf.nn.softmax(tf.matmul(h_fc1_drop, W_fc2) + b_fc2)
+
+    # 各ラベルの確率のようなものを返す
+    return (y_conv)
+
+def loss(output, supervisor_labels_placeholder):
+    # loss function
+    cross_entropy = -tf.reduce_sum(supervisor_labels_placeholder * tf.log(tf.clip_by_value(output,1e-10,1.0)))
+
+    return (cross_entropy)
+
+def training(loss):
+    # optimize
+    train_step = tf.train.AdamOptimizer(0.01).minimize(loss)
+
+    return (train_step)
+
+def evaluate(output, y):
+    correct_prediction = tf.equal(tf.argmax(output,1), tf.argmax(y,1))
+
+    return (correct_prediction)
+
+def accuracy(correct_prediction):
+    accuracy = tf.reduce_mean(tf.cast(correct_prediction, "float"))
+
+    return (accuracy)
+
+def main(argv):
+    # input data
+    input_placeholder = tf.placeholder("float", [None, FLAGS.image_size])
+    # target data
+    supervisor_labels_placeholder = tf.placeholder("float", [None, FLAGS.class_size])
+    
+    # keep prob
+    keep_prob = tf.placeholder("float")
+
+    # feed_dict (No Batch)
+    #feed_dict     = {input_placeholder: train_x, supervisor_labels_placeholder: train_y}
+
+    # train
+    sess = tf.Session()
+
+    # Prepare Data
+    train_x, train_y = read_dataset(os.path.join(os.getcwd(),FLAGS.path), FLAGS.batch_size)
+    #test_x , test_y  = read_dataset(FLAGS.path) # not prepare yet
+    #test_x, test_y   = PrepareData(data_size)
+    #print(train_x)
+    #print(train_y)
+    #exit()
+
+    output        = inference(input_placeholder, keep_prob)
+    cross_entropy = loss(output, supervisor_labels_placeholder)
+    training_op   = training(cross_entropy)
+    eval          = evaluate(output, supervisor_labels_placeholder)
+    acc           = accuracy(eval)
+    #batchx, batchy = tf.train.batch([train_x, train_y], batch_size=FLAGS.batch_size)
+
+    # initialize
+    init = tf.global_variables_initializer()
+
+    sess.run(init)
+
+    coord   = tf.train.Coordinator()
+    threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+    print("Training...")
+    for i in range(FLAGS.epoch):
+        #for j in range(int(len(train_x)/FLAGS.batch_size)):
+        """
+        for j in range(100):
+            # batch
+            #print(batch_x)
+        """
+        try:
+            # feed_dict
+            #while not coord.should_stop():
+            print(i)
+            batch_x, idx = sess.run([train_x, train_y])
+            batch_y = []
+            for j in idx:
+                tmp = np.zeros(FLAGS.class_size)
+                tmp[j]=1
+                batch_y.append(tmp)
+            batch_y = np.asarray(batch_y)
+            feed_dict     = {input_placeholder: batch_x, supervisor_labels_placeholder: batch_y, keep_prob: 1.0}
+            sess.run(training_op, feed_dict=feed_dict)
+        finally:
+            coord.request_stop()
+            coord.join(threads)
+
+        if (i%100==0):
+            #loss
+            feed_dict     = {input_placeholder: batch_x, supervisor_labels_placeholder: batch_y, keep_prob: 1.0}
+            train_loss     = sess.run(cross_entropy, feed_dict=feed_dict)
+            # evaluate
+            train_accuracy = sess.run(acc, feed_dict=feed_dict)
+            print("    step %6d: accuracy=%6.3f, loss=%6.3f" % (i, train_accuracy, train_loss))
+
+    # test
+    print("Test...")
+    feed_dict     = {input_placeholder: test_x, supervisor_labels_placeholder: test_y, keep_prob: 1.0}
+    print("    accuracy = ", sess.run(acc, feed_dict=feed_dict))
+
+if (__name__ == "__main__"):
+    tf.app.run()
