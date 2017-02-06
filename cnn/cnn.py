@@ -11,9 +11,8 @@ FLAGS = flags.FLAGS
 flags.DEFINE_string("path", "season.csv", "path   of CSVdataset")
 flags.DEFINE_integer("image_size", 28*28*3, "Size   of image")
 flags.DEFINE_integer("class_size", 2,     "Size   of class")
-flags.DEFINE_integer("epoch",      1000,  "Number of epoch")
-flags.DEFINE_integer("batch_size", 100,   "Number of batch")
-
+flags.DEFINE_integer("epoch",      10,  "Number of epoch")
+flags.DEFINE_integer("batch_size", 2,   "Number of batch")
 
 #batch_x, batch_y = next_batch(train_x, train_y)
 #print(batch_x)
@@ -98,7 +97,7 @@ def inference(input_placeholder, keep_prob):
 
 def loss(output, supervisor_labels_placeholder):
     # loss function
-    cross_entropy = -tf.reduce_sum(supervisor_labels_placeholder * tf.log(tf.clip_by_value(output,1e-10,1.0)))
+    cross_entropy = -tf.reduce_mean(supervisor_labels_placeholder * tf.log(tf.clip_by_value(output,1e-10,1.0)))
 
     return (cross_entropy)
 
@@ -155,25 +154,23 @@ def main(argv):
 
     coord   = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(sess=sess, coord=coord)
+
     print("Training...")
     for i in range(FLAGS.epoch):
-        #for j in range(int(len(train_x)/FLAGS.batch_size)):
-        """
-        for j in range(100):
-            # batch
-            #print(batch_x)
-        """
         try:
             # feed_dict
             #while not coord.should_stop():
             print(i)
             batch_x, idx = sess.run([train_x, train_y])
+            #print(idx)
             batch_y = []
             for j in idx:
                 tmp = np.zeros(FLAGS.class_size)
-                tmp[j]=1
+                tmp[j] = 1
                 batch_y.append(tmp)
             batch_y = np.asarray(batch_y)
+            #print(batch_x)
+            #print(batch_y)
             feed_dict     = {input_placeholder: batch_x, supervisor_labels_placeholder: batch_y, keep_prob: 1.0}
             sess.run(training_op, feed_dict=feed_dict)
         finally:
@@ -189,9 +186,9 @@ def main(argv):
             print("    step %6d: accuracy=%6.3f, loss=%6.3f" % (i, train_accuracy, train_loss))
 
     # test
-    print("Test...")
-    feed_dict     = {input_placeholder: test_x, supervisor_labels_placeholder: test_y, keep_prob: 1.0}
-    print("    accuracy = ", sess.run(acc, feed_dict=feed_dict))
+    #print("Test...")
+    #feed_dict     = {input_placeholder: test_x, supervisor_labels_placeholder: test_y, keep_prob: 1.0}
+    #print("    accuracy = ", sess.run(acc, feed_dict=feed_dict))
 
 if (__name__ == "__main__"):
     tf.app.run()

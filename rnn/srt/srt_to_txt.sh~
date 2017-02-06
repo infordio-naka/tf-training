@@ -1,0 +1,8 @@
+#!/bin/bash
+
+if [ $# -ne 2 ]; then
+    echo "usage: $0 <source> <save_file>"
+    exit
+fi
+
+tail -n +3 $1 | grep "[A-Za-z]" > $2

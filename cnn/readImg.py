@@ -53,7 +53,7 @@ def _generate_image_and_label_batch(image, label, min_queue_examples,
         capacity=min_queue_examples + 3 * batch_size)
 
   # Display the training images in the visualizer.
-  tf.image_summary('images', images)
+  tf.summary.image('images', images)
 
   return images, tf.reshape(label_batch, [batch_size])
 
@@ -71,6 +71,7 @@ def read_dataset(path, batch_size):
     fname, label   = tf.decode_csv(val, [["aa"], [1]])
     jpeg_r         = tf.read_file(fname)
     raw_image      = tf.image.decode_jpeg(jpeg_r, channels=3)
+    #float_image    = tf.image.resize_images(raw_image, [28,28])
     reshaped_image   = tf.image.resize_images(raw_image, [28,28])
 
     """
